@@ -18,6 +18,8 @@ env:
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   TZ: Asia/Shanghai
+  IF_ADD_PACKAGE: true
+  PACKAGE_FILE: package.config
 
 jobs:
   build:
@@ -63,6 +65,7 @@ jobs:
         [ -e files ] && mv files src/files
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE src/.config
         cat $EXTERNAL_FILE >> src/.config
+        [ $IF_ADD_PACKAGE = true ] && cat $PACKAGE_FILE >> src/.config
         chmod +x $DIY_P2_SH
         cd src
         $GITHUB_WORKSPACE/$DIY_P2_SH
