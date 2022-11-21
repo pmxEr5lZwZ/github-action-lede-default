@@ -1,0 +1,112 @@
+name: Build Newifi3 D2
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: 'SSH connection to Actions'
+        required: false
+        default: 'false'
+        
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  CONFIG_FILE: newifi3d2.config
+  EXTERNAL_FILE: external.config
+  PACKAGE_FILE: package.config
+  FEEDS_CONF: feeds.conf.default
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: diy-part2.sh
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+      
+    - name: Initialization environment
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo -E apt -qq update
+        sudo -E apt -qq full-upgrade -y
+        #sudo -E apt -qq install -y ack antlr3 aria2 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pip libpython3-dev qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        sudo -E apt -qq install $(curl -fsSL https://raw.githubusercontent.com/bigbugcc/openwrts/master/openwrt-env)
+        sudo -E apt -qq autoremove --purge
+        sudo -E apt -qq clean
+        sudo timedatectl set-timezone "$TZ"
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+        
+    - name: Clone LEDE
+      working-directory: /workdir
+      run: |
+        git clone $REPO_URL -b $REPO_BRANCH src
+        ln -sf /workdir/src $GITHUB_WORKSPACE/src
+    - name: Load custom feeds
+      run: |
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF src/feeds.conf.default
+        chmod +x $DIY_P1_SH
+        cd src
+        $GITHUB_WORKSPACE/$DIY_P1_SH
+    - name: Update feeds
+      run: cd src && ./scripts/feeds update -a
+
+    - name: Install feeds
+      run: cd src && ./scripts/feeds install -a
+      
+    - name: Load custom configuration
+      run: |
+        [ -e files ] && mv files src/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE src/.config
+        cat $EXTERNAL_FILE >> src/.config
+        cat $PACKAGE_FILE >> src/.config
+        chmod +x $DIY_P2_SH
+        cd src
+        $GITHUB_WORKSPACE/$DIY_P2_SH
+        
+    - name: SSH connection to Actions
+      uses: P3TERX/ssh2actions@v1.0.0
+      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
+    
+    - name: Modify configuration
+      run: |
+        cd src && make defconfig
+        sed -i '/CONFIG_DEFAULT/'d .config
+        cat .config
+    
+    - name: Copy Current Config
+      run: |
+        cd src
+        mkdir current-config
+        cp .config current-config/.config
+      
+    - name: Upload Current Config
+      uses: actions/upload-artifact@main
+      with:
+        name: current-config
+        path: src/current-config
+      
+    - name: Download dl library
+      run: |
+        cd src
+        echo -e "$(nproc) thread compile"
+        make download -j$(nproc) || make download -j1
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+        
+    - name: Compile the LEDE
+      id: compile
+      run: |
+        cd src
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) V=s || make V=s -j1
+    - name: Upload bin directory
+      uses: actions/upload-artifact@main
+      with:
+        name: lede
+        path: src/bin
