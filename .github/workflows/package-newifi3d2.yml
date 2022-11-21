@@ -1,4 +1,4 @@
-name: Build Newifi3 D2
+name: Build Newifi3 D2 Package
 
 on:
   repository_dispatch:
