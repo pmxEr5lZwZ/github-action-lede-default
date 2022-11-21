@@ -104,7 +104,7 @@ jobs:
       run: |
         cd src
         echo -e "$(nproc) thread compile"
-        make -j$(nproc) V=s || make V=s -j1
+        make package/helloworld/luci-app-ssr-plus/compile -j$(nproc) V=s || make package/helloworld/luci-app-ssr-plus/compile V=s -j1
     - name: Upload bin directory
       uses: actions/upload-artifact@main
       with:
